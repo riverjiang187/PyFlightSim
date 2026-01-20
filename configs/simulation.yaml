@@ -1,0 +1,24 @@
+# Simulation Scenario Configuration
+# 仿真场景配置
+
+time:
+  dt: 0.02            # Integration time step (s) / 积分步长
+  duration: 160.0      # Total duration (s) / 总时长
+
+initial_state:
+  # NED Frame (m) / 北东下坐标系
+  pos: [0.0, 0.0, -1900.0]
+  # Body Frame Velocity (m/s) / 机体轴速度
+  vel: [60.0, 0.0, 0.0]
+  # Euler Angles [Roll, Pitch, Yaw] (deg) / 欧拉角
+  att_deg: [0.0, 0.0, 0.0]
+
+mission:
+  target_alt: 2000.0  # Target Altitude (m) / 目标高度
+  target_speed: 60.0  # Target Speed (m/s) / 目标速度
+
+environment:
+  turbulence:
+    enable: true
+    # Intensity Sigma [u, v, w] / 湍流强度
+    intensity: [0.6, 0.6, 0.5]

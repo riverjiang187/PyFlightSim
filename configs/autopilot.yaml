@@ -1,0 +1,84 @@
+# Autopilot Configuration parameters.
+# Tuned for "Limousine Mode" - Maximum smoothness and stability.
+# Sacrifices response speed for passenger comfort and mechanical safety.
+#
+# 自动驾驶仪配置参数。
+# 针对“豪华轿车模式”调优 - 追求最大的平滑度和稳定性。
+# 牺牲响应速度以换取乘客舒适度和机械安全性。
+
+# Design cruise speed for gain scheduling (m/s)
+# 用于增益调度的设计巡航速度 (米/秒)
+design_speed: 60.0
+
+# --- Flight Envelope Limits / 飞行包线限制 ---
+limits:
+  max_climb_rate: 3.0   # m/s (Reduced for comfort / 降低以提高舒适度)
+  max_sink_rate: 3.0    # m/s
+  max_bank: 0.35        # rad (~20 deg, gentle turns / 柔和转弯)
+  max_pitch: 0.20       # rad (~11 deg, prevent steep climb / 防止大角度爬升)
+
+# --- Longitudinal Loops / 纵向回路 ---
+
+# 1. Outer Loop: Altitude -> Target Climb Rate
+#    外环：高度 -> 目标爬升率
+altitude_hold:
+  kp: 0.05    # Very low gain for gentle capture / 极低增益，实现柔和捕获
+  ki: 0.0005  # Slow integration to remove error / 缓慢积分以消除误差
+  kd: 0.0
+  out_min: -3.0
+  out_max: 3.0
+
+# 2. Middle Loop: Climb Rate -> Target Pitch
+#    中环：爬升率 -> 目标俯仰角
+climb_rate_hold:
+  kp: 0.02    # Low gain to prevent overshooting / 低增益以防止超调
+  ki: 0.005
+  kd: 0.0
+  out_min: -0.20
+  out_max: 0.20
+
+# 3. Inner Loop: Pitch -> Elevator
+#    内环：俯仰角 -> 升降舵
+pitch_hold:
+  kp: -0.5    # Reduced sensitivity / 降低灵敏度
+  ki: -0.02
+  kd: -0.01   # Minimal damping to stop bounce, low enough to avoid jitter / 极小阻尼防止弹跳，且不引起颤振
+  out_min: -1.0
+  out_max: 1.0
+
+# --- Speed Control / 速度控制 ---
+speed_hold:
+  kp: 0.05    # Slow throttle response / 缓慢的油门响应
+  ki: 0.005
+  kd: 0.0
+  out_min: 0.0
+  out_max: 1.0
+
+# --- Lateral Loops / 横侧向回路 ---
+
+# 1. Outer Loop: Heading -> Target Roll
+#    外环：航向 -> 目标滚转角
+heading_hold:
+  kp: 0.8     # Gentle turning / 柔和转向
+  ki: 0.0
+  kd: 0.0
+  out_min: -0.35
+  out_max: 0.35
+
+# 2. Inner Loop: Roll -> Aileron
+#    内环：滚转角 -> 副翼
+roll_hold:
+  kp: 0.05    # Low sensitivity / 低灵敏度
+  ki: 0.005
+  kd: 0.01    # Slight damping for roll stability / 轻微阻尼以保持滚转稳定
+  out_min: -1.0
+  out_max: 1.0
+
+# 3. Stability Augmentation: Yaw Rate -> Rudder (Yaw Damper)
+#    增稳：偏航角速度 -> 方向舵 (偏航阻尼器)
+yaw_damper:
+  kp: 0.5     # Moderate damping / 适度阻尼
+  ki: 0.0
+  kd: 0.0
+  out_min: -0.3
+  out_max: 0.3

@@ -1,0 +1,32 @@
+# Aircraft Physical Properties
+# 飞机物理属性
+
+name: "Cessna 172 Skyhawk"
+mixer_type: "standard" # standard, delta, v-tail
+
+mass_props:
+  mass: 1300.0
+  Ixx: 1000.0
+  Iyy: 4000.0
+  Izz: 4500.0
+
+aero_params:
+  S: 16.2         # Wing Area / 翼面积
+  b: 10.9         # Wingspan / 翼展
+  c: 1.5          # Chord / 弦长
+
+  # Longitudinal / 纵向
+  C_L_0: 0.25
+  C_L_alpha: 4.5
+  C_D_0: 0.025
+  K: 0.05
+  C_m_0: 0.02
+  C_m_alpha: -0.5
+  C_m_q: -10.0
+
+  # Lateral / 横侧向
+  C_l_delta_a: 0.1
+  C_n_delta_r: 0.05
+  C_n_beta: 0.1
+  C_l_p: -0.4
+  C_n_r: -0.2
