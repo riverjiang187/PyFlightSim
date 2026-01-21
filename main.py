@@ -3,7 +3,7 @@ Main entry point for the FlightSim simulation.
 Orchestrates the entire simulation pipeline: loading configs, initializing physics,
 running the time loop, and logging data.
 
-FlightSim 的主仿真入口。
+飞行仿真框架的主入口。
 负责编排整个仿真流程：加载配置、初始化物理引擎、运行时间循环、记录数据。
 """
 
@@ -22,7 +22,6 @@ from modules.sensors.air_data import AirDataComputer
 from modules.sensors.gps import GPS
 from modules.control.autopilot import Autopilot
 from modules.control.mixer import Mixer
-
 
 def main():
     print("=== FlightSim: Initializing ===")
@@ -74,7 +73,7 @@ def main():
         turb = DrydenTurbulence(intensity=turb_cfg.get('intensity'))
         print("Environment: Turbulence ON")
     else:
-        turb = DrydenTurbulence(intensity=[0, 0, 0])
+        turb = DrydenTurbulence(intensity=[0,0,0])
         print("Environment: Turbulence OFF")
 
     # 4. Simulation Setup / 仿真设置
@@ -107,6 +106,14 @@ def main():
     for step in range(num_steps):
         current_time = step * dt
 
+        # --- Ground Collision Check / 地面碰撞检测 ---
+        # NED frame: Down is positive. Altitude = -pos[2].
+        # If pos[2] > 0, it means Altitude < 0 (Underground).
+        if aircraft.pos[2] > 0:
+            print(f"\n💥 CRASH: Aircraft hit the ground at T={current_time:.2f}s")
+            print(f"   Impact Speed: {adc.get_reading().airspeed_tas:.1f} m/s")
+            break # Stop simulation immediately
+
         # --- Environment / 环境 ---
         # Calculate wind and atmosphere / 计算风场和大气
         wind_gusts = turb.update(-aircraft.pos[2], adc.get_reading().airspeed_tas, dt)
@@ -131,8 +138,7 @@ def main():
         # --- Physics Integration / 物理积分 ---
         # Define differential equation wrapper / 定义微分方程包装器
         def physics_wrapper(y_vec):
-            temp = AircraftState();
-            temp.from_vector(y_vec)
+            temp = AircraftState(); temp.from_vector(y_vec)
             r, _, _, _ = Atmosphere.get_properties(-temp.pos[2])
             f, m = aero.get_forces_and_moments(temp, r, controls, wind_gusts)
             return kinematics.get_state_derivative(temp, f, m)
@@ -146,14 +152,13 @@ def main():
                    imu.get_data().specific_force[2], gps.get_reading())
 
         # Console Progress / 控制台输出
-        if step % int(5.0 / dt) == 0:
+        if step % int(5.0/dt) == 0:
             g_read = gps.get_reading()
             print(f"T={current_time:5.1f} | Alt={g_read.altitude:7.1f} | Lat={g_read.latitude:.4f}")
 
     # 6. Finalize / 结束
     logger.save_to_csv("flight_data.csv")
     print("=== Simulation Complete ===")
-
 
 if __name__ == "__main__":
     main()
