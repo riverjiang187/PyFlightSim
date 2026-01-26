@@ -9,13 +9,11 @@ import numpy as np
 from modules.utils.math3d import MathUtils
 from modules.utils.constants import GRAVITY
 
-
 class MassProperties:
     def __init__(self, mass, Ixx, Iyy, Izz):
         self.mass = mass
         self.inertia = np.array([[Ixx, 0, 0], [0, Iyy, 0], [0, 0, Izz]])
         self.inertia_inv = np.linalg.inv(self.inertia)
-
 
 class Kinematics:
     def __init__(self, mass_props):
@@ -27,7 +25,11 @@ class Kinematics:
         根据当前状态和输入力计算状态导数。
         """
         vel_b = state.vel
-        q = state.q
+
+        # FIX: Enforce normalization before calculation to prevent drift
+        # 修复：在计算前强制归一化，防止积分漂移
+        q = MathUtils.normalize_quat(state.q)
+
         omega_b = state.rates
 
         # 1. Kinematics (Pos & Att) / 运动学 (位置与姿态)

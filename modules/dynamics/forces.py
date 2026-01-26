@@ -8,25 +8,17 @@ Computes Lift, Drag, and Moments based on Stability Derivatives.
 import numpy as np
 from dataclasses import dataclass
 
-
 @dataclass
 class AeroParams:
-    S: float;
-    b: float;
-    c: float
-    C_L_0: float;
-    C_L_alpha: float
-    C_D_0: float;
-    K: float
-    C_m_0: float;
-    C_m_alpha: float;
-    C_m_q: float
+    S: float; b: float; c: float
+    C_L_0: float; C_L_alpha: float
+    C_D_0: float; K: float
+    C_m_0: float; C_m_alpha: float; C_m_q: float
     C_l_delta_a: float = 0.1
     C_n_delta_r: float = 0.05
     C_n_beta: float = 0.1
     C_l_p: float = -0.4
     C_n_r: float = -0.2
-
 
 @dataclass
 class ControlInputs:
@@ -34,7 +26,6 @@ class ControlInputs:
     aileron: float = 0.0
     rudder: float = 0.0
     throttle: float = 0.0
-
 
 class Aerodynamics:
     def __init__(self, params: AeroParams):
@@ -45,19 +36,24 @@ class Aerodynamics:
         # 计算空速 (机体速度 - 风速)
         v_air_vec = state.vel - wind_body_vector
         u, v, w = v_air_vec
-        V_sq = u ** 2 + v ** 2 + w ** 2
+        V_sq = u**2 + v**2 + w**2
         V_tas = np.sqrt(V_sq)
 
-        if V_tas < 0.1: return np.zeros(3), np.zeros(3)
+        # Low speed protection / 低速保护
+        if V_tas < 0.1:
+            return np.zeros(3), np.zeros(3)
 
         # Alpha & Beta / 攻角与侧滑角
+        # FIX: Use atan2 for Beta to avoid singularity and domain errors
+        # 修复：使用 atan2 计算侧滑角，避免奇异点和定义域错误
         alpha = np.arctan2(w, u)
-        beta = np.arcsin(np.clip(v / V_tas, -1, 1))
+        beta = np.arctan2(v, u) # Replaced arcsin(v/V)
+
         q_bar = 0.5 * density * V_sq
 
         # Longitudinal Coeffs / 纵向系数
         C_L = self.params.C_L_0 + self.params.C_L_alpha * alpha + (0.5 * controls.elevator)
-        C_D = self.params.C_D_0 + self.params.K * (C_L ** 2)
+        C_D = self.params.C_D_0 + self.params.K * (C_L**2)
         q_hat = (self.params.c * state.rates[1]) / (2 * V_tas)
         C_m = (self.params.C_m_0 + self.params.C_m_alpha * alpha +
                self.params.C_m_q * q_hat + -1.5 * controls.elevator)
