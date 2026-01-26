@@ -23,6 +23,44 @@ from modules.sensors.gps import GPS
 from modules.control.autopilot import Autopilot
 from modules.control.mixer import Mixer
 
+def validate_configurations(ac_cfg, ap_cfg, sim_cfg):
+    """
+    Performs sanity checks on loaded configurations.
+    Raises ValueError if critical parameters are invalid or missing.
+
+    对加载的配置进行健全性检查。
+    如果关键参数无效或缺失，抛出 ValueError。
+    """
+    print("Performing Pre-flight Config Validation...", end=" ")
+
+    # 1. Physics Validation / 物理验证
+    mass = ac_cfg['mass_props']['mass']
+    if mass <= 0:
+        raise ValueError(f"\n[Config Error] Aircraft mass must be positive! Found: {mass}")
+
+    # 2. Simulation Validation / 仿真设置验证
+    dt = sim_cfg['time']['dt']
+    if dt <= 0:
+        raise ValueError(f"\n[Config Error] Time step dt must be positive! Found: {dt}")
+    if dt > 0.05:
+        raise ValueError(f"\n[Config Error] Time step dt={dt}s is too large for RK4 stability! Max allowed: 0.05s")
+
+    # 3. Autopilot Validation / 自动驾驶仪验证
+    # Ensure all required loops exist and have PID gains
+    # 确保所有必要的控制回路存在且包含 PID 增益
+    required_loops = ['pitch_hold', 'altitude_hold', 'speed_hold', 'roll_hold', 'heading_hold']
+    required_gains = ['kp', 'ki', 'kd']
+
+    for loop in required_loops:
+        if loop not in ap_cfg:
+            raise ValueError(f"\n[Config Error] Missing control loop '{loop}' in autopilot.yaml")
+
+        for gain in required_gains:
+            if gain not in ap_cfg[loop]:
+                raise ValueError(f"\n[Config Error] Loop '{loop}' is missing gain parameter '{gain}'")
+
+    print("PASS")
+
 def main():
     print("=== FlightSim: Initializing ===")
 
@@ -34,6 +72,13 @@ def main():
     except FileNotFoundError as e:
         print(f"Error loading config: {e}")
         return
+
+    # --- DATA VALIDATION (NEW) / 数据验证 (新增) ---
+    try:
+        validate_configurations(ac_cfg, ap_cfg, sim_cfg)
+    except ValueError as e:
+        print(e)
+        return # Stop simulation if validation fails
 
     # 2. Initialize Physics Engine / 初始化物理引擎
     # Mass Properties / 质量属性
@@ -78,13 +123,6 @@ def main():
 
     # 4. Simulation Setup / 仿真设置
     dt = sim_cfg['time']['dt']
-
-    # --- INTEGRATOR SAFETY CHECK / 积分器安全检查 ---
-    # Ensure time step is small enough for RK4 stability
-    # 确保时间步长足够小以保证 RK4 稳定性
-    if dt > 0.05:
-        raise ValueError(f"CRITICAL: Time step dt={dt}s is too large! Please use dt <= 0.05s.")
-
     t_max = sim_cfg['time']['duration']
     num_steps = int(t_max / dt)
 
@@ -106,10 +144,7 @@ def main():
     aircraft = AircraftState(pos=init_pos, vel=init_vel, att=init_quat)
     controls = ControlInputs()
 
-    # --- MEMORY OPTIMIZATION / 内存优化 ---
-    # Pre-allocate a temporary state object for RK4 calculations.
-    # Avoids creating 4 new objects per time step (12,000+ total).
-    # 预分配临时状态对象，避免在 RK4 计算中重复创建对象。
+    # Memory Optimization: Pre-allocate temp state
     temp_state = AircraftState()
 
     print(f"Simulating {t_max}s | Target: {tgt_alt}m @ {tgt_spd}m/s")
@@ -142,10 +177,8 @@ def main():
 
         # --- Physics Integration / 物理积分 ---
         def physics_wrapper(y_vec):
-            # OPTIMIZATION: Reuse existing object instead of creating new one
-            # 优化：复用现有对象，而不是创建新对象
+            # Reuse object to reduce GC pressure
             temp_state.from_vector(y_vec)
-
             r, _, _, _ = Atmosphere.get_properties(-temp_state.pos[2])
             f, m = aero.get_forces_and_moments(temp_state, r, controls, wind_gusts)
             return kinematics.get_state_derivative(temp_state, f, m)
