@@ -83,7 +83,7 @@ def main():
     # Ensure time step is small enough for RK4 stability
     # 确保时间步长足够小以保证 RK4 稳定性
     if dt > 0.05:
-        raise ValueError(f"CRITICAL: Time step dt={dt}s is too large! Please use dt <= 0.05s to prevent physics instability.")
+        raise ValueError(f"CRITICAL: Time step dt={dt}s is too large! Please use dt <= 0.05s.")
 
     t_max = sim_cfg['time']['duration']
     num_steps = int(t_max / dt)
@@ -105,6 +105,12 @@ def main():
 
     aircraft = AircraftState(pos=init_pos, vel=init_vel, att=init_quat)
     controls = ControlInputs()
+
+    # --- MEMORY OPTIMIZATION / 内存优化 ---
+    # Pre-allocate a temporary state object for RK4 calculations.
+    # Avoids creating 4 new objects per time step (12,000+ total).
+    # 预分配临时状态对象，避免在 RK4 计算中重复创建对象。
+    temp_state = AircraftState()
 
     print(f"Simulating {t_max}s | Target: {tgt_alt}m @ {tgt_spd}m/s")
     print("-" * 60)
@@ -136,10 +142,13 @@ def main():
 
         # --- Physics Integration / 物理积分 ---
         def physics_wrapper(y_vec):
-            temp = AircraftState(); temp.from_vector(y_vec)
-            r, _, _, _ = Atmosphere.get_properties(-temp.pos[2])
-            f, m = aero.get_forces_and_moments(temp, r, controls, wind_gusts)
-            return kinematics.get_state_derivative(temp, f, m)
+            # OPTIMIZATION: Reuse existing object instead of creating new one
+            # 优化：复用现有对象，而不是创建新对象
+            temp_state.from_vector(y_vec)
+
+            r, _, _, _ = Atmosphere.get_properties(-temp_state.pos[2])
+            f, m = aero.get_forces_and_moments(temp_state, r, controls, wind_gusts)
+            return kinematics.get_state_derivative(temp_state, f, m)
 
         next_vec = Integrator.rk4_step(physics_wrapper, aircraft.to_vector(), dt)
         aircraft.from_vector(next_vec)
