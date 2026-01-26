@@ -78,6 +78,13 @@ def main():
 
     # 4. Simulation Setup / 仿真设置
     dt = sim_cfg['time']['dt']
+
+    # --- INTEGRATOR SAFETY CHECK / 积分器安全检查 ---
+    # Ensure time step is small enough for RK4 stability
+    # 确保时间步长足够小以保证 RK4 稳定性
+    if dt > 0.05:
+        raise ValueError(f"CRITICAL: Time step dt={dt}s is too large! Please use dt <= 0.05s to prevent physics instability.")
+
     t_max = sim_cfg['time']['duration']
     num_steps = int(t_max / dt)
 
@@ -107,43 +114,33 @@ def main():
         current_time = step * dt
 
         # --- Ground Collision Check / 地面碰撞检测 ---
-        # NED frame: Down is positive. Altitude = -pos[2].
-        # If pos[2] > 0, it means Altitude < 0 (Underground).
         if aircraft.pos[2] > 0:
             print(f"\n💥 CRASH: Aircraft hit the ground at T={current_time:.2f}s")
             print(f"   Impact Speed: {adc.get_reading().airspeed_tas:.1f} m/s")
-            break # Stop simulation immediately
+            break
 
         # --- Environment / 环境 ---
-        # Calculate wind and atmosphere / 计算风场和大气
         wind_gusts = turb.update(-aircraft.pos[2], adc.get_reading().airspeed_tas, dt)
         rho, _, _, _ = Atmosphere.get_properties(-aircraft.pos[2])
 
         # --- Sensors / 感知 ---
-        # Physics engine calculates true forces / 物理引擎计算真实受力
         forces_body, moments_body = aero.get_forces_and_moments(aircraft, rho, controls, wind_gusts)
 
-        # Update sensor readings / 更新传感器读数
         imu.update(aircraft, forces_body, mass_props.mass)
         adc.update(aircraft)
         gps.update(aircraft)
 
-        # --- GNC (Guidance, Navigation, Control) / 制导导航与控制 ---
-        # Autopilot calculates logical commands / 自动驾驶仪计算逻辑指令
+        # --- GNC / 制导导航与控制 ---
         p_cmd, r_cmd, y_cmd, t_cmd = autopilot.update(imu.get_data(), adc.get_reading(), dt)
-
-        # Mixer maps to physical actuators / 混控器映射到物理舵面
         controls = mixer.mix(p_cmd, r_cmd, y_cmd, t_cmd)
 
         # --- Physics Integration / 物理积分 ---
-        # Define differential equation wrapper / 定义微分方程包装器
         def physics_wrapper(y_vec):
             temp = AircraftState(); temp.from_vector(y_vec)
             r, _, _, _ = Atmosphere.get_properties(-temp.pos[2])
             f, m = aero.get_forces_and_moments(temp, r, controls, wind_gusts)
             return kinematics.get_state_derivative(temp, f, m)
 
-        # Execute RK4 step / 执行 RK4 积分
         next_vec = Integrator.rk4_step(physics_wrapper, aircraft.to_vector(), dt)
         aircraft.from_vector(next_vec)
 
