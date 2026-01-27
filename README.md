@@ -29,7 +29,7 @@ It is designed as a **"White-Box" engineering tool** for research, control algor
 
 ```text
 PyFlightSim/
-├── run_simulation.py              # [Entry] Simulation Entry Point
+├── run_simulation.py    # [Entry] Simulation Entry Point
 ├── plot_results.py      # [Entry] Visualization Tool
 ├── configs/             # [Data] Configuration Files
 │   ├── aircraft.yaml    # Physics parameters
