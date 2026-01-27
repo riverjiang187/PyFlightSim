@@ -1,0 +1,38 @@
+# Aircraft Configuration: General Dynamics F-16 Fighting Falcon
+# Source: Approximate data based on NASA TP-1538.
+
+name: "F-16 Fighting Falcon"
+mixer_type: "standard"
+
+mass_props:
+  mass: 9298.0    # kg (Empty weight + 50% fuel)
+  Ixx: 12874.0    # kg*m^2
+  Iyy: 75673.0    # kg*m^2
+  Izz: 85552.0    # kg*m^2
+
+aero_params:
+  # Geometry
+  S: 27.87        # Wing Area (m^2)
+  b: 9.14         # Wingspan (m)
+  c: 3.45         # Mean Aerodynamic Chord (m)
+
+  # Longitudinal (High performance, low stability)
+  C_L_0: 0.0      # Symmetric
+  C_L_alpha: 4.0  # Lift slope
+  C_D_0: 0.021    # Low drag
+  K: 0.12         # Induced drag
+
+  C_m_0: 0.0
+  C_m_alpha: -0.1 # Relaxed static stability (Agile)
+  C_m_q: -2.5     # Pitch damping
+
+  # Stall (High Alpha capability)
+  alpha_stall: 0.436 # ~25 deg
+  stall_width: 0.1
+
+  # Lateral
+  C_l_delta_a: 0.08 # Roll power
+  C_n_delta_r: 0.05 # Yaw power
+  C_n_beta: 0.18    # Directional stability
+  C_l_p: -0.35      # Roll damping
+  C_n_r: -0.2       # Yaw damping
