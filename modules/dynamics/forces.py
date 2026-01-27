@@ -20,6 +20,11 @@ class AeroParams:
     C_l_p: float = -0.4
     C_n_r: float = -0.2
 
+    # --- FIX: Added missing stall parameters ---
+    # 修复：添加缺失的失速参数定义
+    alpha_stall: float = 0.26  # Default ~15 deg
+    stall_width: float = 0.05
+
 @dataclass
 class ControlInputs:
     elevator: float = 0.0
@@ -31,34 +36,53 @@ class Aerodynamics:
     def __init__(self, params: AeroParams):
         self.params = params
 
+    def _sigmoid(self, x, center, width):
+        """
+        Sigmoid blending function.
+        Returns 0.0 when x << center, 1.0 when x >> center.
+        """
+        return 1.0 / (1.0 + np.exp(-4.0 * (abs(x) - center) / width))
+
     def get_forces_and_moments(self, state, density, controls, wind_body_vector=np.zeros(3)):
         # Calculate Airspeed (Body Vel - Wind Vel)
-        # 计算空速 (机体速度 - 风速)
         v_air_vec = state.vel - wind_body_vector
         u, v, w = v_air_vec
         V_sq = u**2 + v**2 + w**2
         V_tas = np.sqrt(V_sq)
 
-        # Low speed protection / 低速保护
-        if V_tas < 0.1:
-            return np.zeros(3), np.zeros(3)
+        if V_tas < 0.1: return np.zeros(3), np.zeros(3)
 
-        # Alpha & Beta / 攻角与侧滑角
-        # FIX: Use atan2 for Beta to avoid singularity and domain errors
-        # 修复：使用 atan2 计算侧滑角，避免奇异点和定义域错误
+        # Alpha & Beta
         alpha = np.arctan2(w, u)
-        beta = np.arctan2(v, u) # Replaced arcsin(v/V)
-
+        beta = np.arcsin(np.clip(v / V_tas, -1, 1))
         q_bar = 0.5 * density * V_sq
 
-        # Longitudinal Coeffs / 纵向系数
-        C_L = self.params.C_L_0 + self.params.C_L_alpha * alpha + (0.5 * controls.elevator)
-        C_D = self.params.C_D_0 + self.params.K * (C_L**2)
+        # --- Aerodynamic Coefficients (Non-Linear Blending) ---
+
+        # A. Linear Model
+        cl_linear = self.params.C_L_0 + self.params.C_L_alpha * alpha
+        cd_linear = self.params.C_D_0 + self.params.K * (cl_linear**2)
+
+        # B. Stall Model
+        cl_stall = 1.0 * np.sin(2 * alpha)
+        cd_stall = 2.0 * np.sin(alpha)**2 + self.params.C_D_0
+
+        # C. Blending
+        sigma = self._sigmoid(alpha, self.params.alpha_stall, self.params.stall_width)
+
+        C_L = (1 - sigma) * cl_linear + sigma * cl_stall
+        C_D = (1 - sigma) * cd_linear + sigma * cd_stall
+
+        # Elevator effect reduces after stall
+        elevator_eff = (1 - 0.5 * sigma)
+        C_L += (0.5 * controls.elevator) * elevator_eff
+
+        # Pitch Moment
         q_hat = (self.params.c * state.rates[1]) / (2 * V_tas)
         C_m = (self.params.C_m_0 + self.params.C_m_alpha * alpha +
-               self.params.C_m_q * q_hat + -1.5 * controls.elevator)
+               self.params.C_m_q * q_hat + -1.5 * controls.elevator * elevator_eff)
 
-        # Lateral Coeffs / 横侧向系数
+        # Lateral Coeffs
         p_hat = (self.params.b * state.rates[0]) / (2 * V_tas)
         r_hat = (self.params.b * state.rates[2]) / (2 * V_tas)
 
@@ -66,17 +90,17 @@ class Aerodynamics:
         C_n = (self.params.C_n_delta_r * controls.rudder) + \
               (self.params.C_n_beta * beta) + (self.params.C_n_r * r_hat)
 
-        # Forces (Stability -> Body Frame) / 力 (稳定性坐标系 -> 机体坐标系)
+        # Forces
         L = q_bar * self.params.S * C_L
         D = q_bar * self.params.S * C_D
         Fx = -D * np.cos(alpha) + L * np.sin(alpha)
         Fz = -D * np.sin(alpha) - L * np.cos(alpha)
 
-        # Thrust / 推力
+        # Thrust
         max_thrust = 5000.0
         Fx += max_thrust * controls.throttle
 
-        # Moments / 力矩
+        # Moments
         Roll = q_bar * self.params.S * self.params.b * C_l
         Pitch = q_bar * self.params.S * self.params.c * C_m
         Yaw = q_bar * self.params.S * self.params.b * C_n
