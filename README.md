@@ -49,7 +49,7 @@ PyFlightSim/
 ### 1. Installation
 Clone the repository and install dependencies:
 ```bash
-git clone https://github.com/yourusername/PyFlightSim.git
+git clone https://github.com/riverjiang187/PyFlightSim.git
 cd PyFlightSim
 pip install -r requirements.txt
 ```
@@ -57,7 +57,7 @@ pip install -r requirements.txt
 ### 2. Run Simulation
 Execute the standard cruise mission (Cessna 172):
 ```bash
-python main.py
+python run_simulation.py
 ```
 *The simulation will run for 60s, simulating a climb to 2000m in turbulence.*
 
