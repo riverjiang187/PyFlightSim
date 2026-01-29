@@ -1,0 +1,38 @@
+# Aircraft Configuration: Sukhoi Su-27 Flanker
+# Tuned for Cobra Maneuver stability.
+
+name: "Sukhoi Su-27 Flanker"
+mixer_type: "standard"
+
+mass_props:
+  mass: 16800.0   # kg (Airshow weight, ~40% fuel)
+  Ixx: 27000.0    # kg*m^2
+  Iyy: 280000.0   # kg*m^2 (Increased Pitch Inertia - Harder to start, harder to stop)
+  Izz: 300000.0   # kg*m^2
+
+aero_params:
+  # Geometry
+  S: 62.0         # Wing Area (m^2)
+  b: 14.7         # Wingspan (m)
+  c: 4.9          # Mean Aerodynamic Chord (m)
+
+  # Longitudinal
+  C_L_0: 0.05
+  C_L_alpha: 4.5
+  C_D_0: 0.03
+  K: 0.09
+
+  C_m_0: 0.02
+  C_m_alpha: -0.08 # Relaxed stability
+  C_m_q: -8.0     # [CRITICAL] High Damping. Prevents spinning like a top.
+
+  # Stall Parameters
+  alpha_stall: 0.52 # ~30 deg
+  stall_width: 0.15
+
+  # Lateral
+  C_l_delta_a: 0.05
+  C_n_delta_r: 0.04
+  C_n_beta: 0.2
+  C_l_p: -0.3
+  C_n_r: -0.2
