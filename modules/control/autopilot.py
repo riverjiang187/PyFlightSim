@@ -1,17 +1,12 @@
 """
 Autopilot Core Logic.
-Implements Advanced Control Laws:
-1. Vertical Speed Mode (Altitude -> Climb Rate -> Pitch).
-2. Yaw Damper (Yaw Rate -> Rudder).
-3. Gain Scheduling.
+Implements 3-Axis Cascaded PID Control using Quaternion-based Error.
+Includes Vector-based Heading calculation and Yaw Damper with Washout Filter.
 
 自动驾驶仪核心逻辑。
-实现高级控制律：
-1. 垂直速度模式 (高度 -> 爬升率 -> 俯仰)。
-2. 偏航阻尼器 (偏航角速度 -> 方向舵)。
-3. 增益调度。
+使用基于四元数误差的三轴级联 PID 控制。
+包含基于矢量的航向计算以及带冲刷滤波器的偏航阻尼器。
 """
-
 import numpy as np
 from modules.control.pid import PID
 from modules.utils.math3d import MathUtils
@@ -24,31 +19,27 @@ class Autopilot:
             'max_bank': 0.52, 'max_pitch': 0.35
         })
 
-        # --- Longitudinal Loops / 纵向回路 ---
-        # 1. Alt -> Climb Rate
+        # --- Longitudinal Loops ---
         a = config['altitude_hold']
         self.alt_pid = PID(a['kp'], a['ki'], a['kd'], a['out_min'], a['out_max'])
 
-        # 2. Climb Rate -> Pitch [NEW]
         c = config.get('climb_rate_hold', {'kp':0.1, 'ki':0, 'kd':0, 'out_min':-0.3, 'out_max':0.3})
         self.vs_pid = PID(c['kp'], c['ki'], c['kd'], c['out_min'], c['out_max'])
 
-        # 3. Pitch -> Elevator
         p = config['pitch_hold']
         self.pitch_pid = PID(p['kp'], p['ki'], p['kd'], p['out_min'], p['out_max'])
 
-        # --- Lateral Loops / 横侧向回路 ---
+        # --- Lateral Loops ---
         h = config['heading_hold']
         self.hdg_pid = PID(h['kp'], h['ki'], h['kd'], h['out_min'], h['out_max'])
 
         r = config['roll_hold']
         self.roll_pid = PID(r['kp'], r['ki'], r['kd'], r['out_min'], r['out_max'])
 
-        # Yaw Damper [NEW]
         y = config.get('yaw_damper', {'kp':0, 'ki':0, 'kd':0, 'out_min':0, 'out_max':0})
         self.yaw_damp_pid = PID(y['kp'], y['ki'], y['kd'], y['out_min'], y['out_max'])
 
-        # --- Speed / 速度 ---
+        # --- Speed ---
         s = config['speed_hold']
         self.speed_pid = PID(s['kp'], s['ki'], s['kd'], s['out_min'], s['out_max'])
 
@@ -56,76 +47,83 @@ class Autopilot:
         self.target_spd = 60.0
         self.target_hdg = 0.0
 
+        # --- FIX: Washout Filter State ---
+        # 修复：冲刷滤波器状态变量
+        self.yaw_rate_lowpass = 0.0
+        self.washout_time_constant = 2.0 # Seconds (Typical value for aircraft)
+
     def set_targets(self, alt, speed, heading_deg=0.0):
         self.target_alt = alt
         self.target_spd = speed
         self.target_hdg = np.radians(heading_deg)
 
     def _wrap_angle(self, angle):
-        """
-        Keep angle between -pi and pi.
-        保持角度在 -pi 到 pi 之间。
-        """
         return (angle + np.pi) % (2 * np.pi) - np.pi
 
+    def _get_vector_heading_error(self, quat, target_heading):
+        R_b_n = MathUtils.quat_to_rotation_matrix(quat)
+        body_x_ned = R_b_n @ np.array([1.0, 0.0, 0.0])
+        north = body_x_ned[0]
+        east = body_x_ned[1]
+        horizontal_len = np.sqrt(north**2 + east**2)
+
+        if horizontal_len < 0.1:
+            return 0.0
+
+        current_heading = np.arctan2(east, north)
+        return self._wrap_angle(target_heading - current_heading)
+
     def update(self, imu, air_data, dt):
-        # Gain Scheduling / 增益调度
         current_speed = max(air_data.airspeed_tas, 10.0)
         scaling = (self.design_speed / current_speed) ** 2
         scaling = np.clip(scaling, 0.2, 5.0)
 
         # =========================================================
-        # 1. Longitudinal Control (Vertical Speed Mode)
-        #    纵向控制 (垂直速度模式)
+        # 1. Longitudinal Control
         # =========================================================
-
-        # Step A: Altitude -> Target Climb Rate
-        # Limit max climb/sink rate to prevent G-load spikes
-        # 限制最大爬升/下降率，防止过载尖峰
         target_vs = self.alt_pid.update(self.target_alt, air_data.altitude_baro, dt)
         target_vs = np.clip(target_vs, -self.limits['max_sink_rate'], self.limits['max_climb_rate'])
 
-        # Step B: Climb Rate -> Target Pitch
         tgt_pitch = self.vs_pid.update(target_vs, air_data.climb_rate, dt, scale=scaling)
 
-        # Step C: Pitch -> Elevator (Quaternion based)
-        # Construct a "Pitch Only" target quaternion to measure pitch error
-        # 构建“仅俯仰”目标四元数以测量俯仰误差
-        q_tgt_pitch = MathUtils.euler_to_quat(0.0, tgt_pitch, imu.euler[2])
-        att_err = MathUtils.get_body_frame_error(imu.quat, q_tgt_pitch)
-        pitch_err = att_err[1]
+        q_tgt_pitch = MathUtils.euler_to_quat(imu.euler[0], tgt_pitch, imu.euler[2])
+        pitch_err = MathUtils.get_body_frame_error(imu.quat, q_tgt_pitch)[1]
 
         pitch_cmd = self.pitch_pid.update(pitch_err, 0.0, dt, scale=scaling)
 
         # =========================================================
-        # 2. Lateral Control (Heading & Yaw Damper)
-        #    横侧向控制 (航向保持 & 偏航阻尼)
+        # 2. Lateral Control
         # =========================================================
-
-        # Step A: Heading -> Target Roll
-        hdg_error = self._wrap_angle(self.target_hdg - imu.euler[2])
+        hdg_error = self._get_vector_heading_error(imu.quat, self.target_hdg)
         tgt_roll = self.hdg_pid.update(hdg_error, 0.0, dt)
         tgt_roll = np.clip(tgt_roll, -self.limits['max_bank'], self.limits['max_bank'])
 
-        # Step B: Roll -> Aileron
-        # Construct "Roll Only" target (using current pitch/yaw)
-        # 构建“仅滚转”目标
         q_tgt_roll = MathUtils.euler_to_quat(tgt_roll, imu.euler[1], imu.euler[2])
-        att_err_roll = MathUtils.get_body_frame_error(imu.quat, q_tgt_roll)
-        roll_err = att_err_roll[0]
+        roll_err = MathUtils.get_body_frame_error(imu.quat, q_tgt_roll)[0]
 
         roll_cmd = self.roll_pid.update(roll_err, 0.0, dt, scale=scaling)
 
-        # Step C: Yaw Damper (Yaw Rate -> Rudder)
-        # Target Yaw Rate is 0 (stop oscillation)
-        # Rudder opposes Yaw Rate (Negative feedback)
-        # 目标偏航角速度为 0 (停止震荡)。方向舵抵抗偏航角速度 (负反馈)。
-        yaw_rate = imu.angular_rates[2]
-        rud_cmd = self.yaw_damp_pid.update(0.0, yaw_rate, dt, scale=scaling)
+        # --- FIX: Yaw Damper with Washout Filter ---
+        # 修复：带冲刷滤波器的偏航阻尼器
+        raw_yaw_rate = imu.angular_rates[2]
+
+        # 1. Low-pass filter the yaw rate to find the "steady state" turn rate
+        #    低通滤波提取稳态转弯角速度
+        alpha_filter = dt / (self.washout_time_constant + dt)
+        self.yaw_rate_lowpass = (1.0 - alpha_filter) * self.yaw_rate_lowpass + alpha_filter * raw_yaw_rate
+
+        # 2. High-pass filter (Washout) = Raw - LowPass
+        #    高通滤波 (冲刷) = 原始值 - 低通值
+        # This isolates the high-frequency gusts/oscillations
+        # 这分离出了高频阵风/震荡
+        washed_yaw_rate = raw_yaw_rate - self.yaw_rate_lowpass
+
+        # 3. Feed the washed signal to the PID
+        #    将冲刷后的信号喂给 PID
+        rud_cmd = self.yaw_damp_pid.update(0.0, washed_yaw_rate, dt, scale=scaling)
 
         # =========================================================
         # 3. Speed Control
-        #    速度控制
         # =========================================================
         thr_cmd = self.speed_pid.update(self.target_spd, air_data.airspeed_tas, dt)
 
