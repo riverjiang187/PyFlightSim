@@ -53,7 +53,8 @@ def main():
         C_m_0=ap['C_m_0'], C_m_alpha=ap['C_m_alpha'], C_m_q=ap['C_m_q'],
         # Ensure stall parameters are loaded
         alpha_stall=ap.get('alpha_stall', 0.61),
-        stall_width=ap.get('stall_width', 0.15)
+        stall_width=ap.get('stall_width', 0.15),
+        max_thrust = ap.get('max_thrust', 5000.0)
     )
     aero = Aerodynamics(aero_params)
 

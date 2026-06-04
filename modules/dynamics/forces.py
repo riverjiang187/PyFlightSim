@@ -2,6 +2,10 @@
 Aerodynamics and Thrust calculation module.
 Computes Lift, Drag, and Moments based on Stability Derivatives.
 Includes Non-Linear Stall Model using Sigmoid Blending.
+
+气动力与推力计算模块。
+基于稳定性导数计算升力、阻力和力矩。
+包含基于 Sigmoid 混合函数的非线性失速模型。
 """
 import numpy as np
 from dataclasses import dataclass
@@ -19,6 +23,10 @@ class AeroParams:
     C_n_r: float = -0.2
     alpha_stall: float = 0.26
     stall_width: float = 0.05
+
+    # --- FIX: Added max_thrust to decouple propulsion from code ---
+    # 修复：添加 max_thrust 以将动力系统与代码解耦
+    max_thrust: float = 5000.0 # Default fallback value
 
 @dataclass
 class ControlInputs:
@@ -46,44 +54,25 @@ class Aerodynamics:
         beta = np.arcsin(np.clip(v / V_tas, -1, 1))
         q_bar = 0.5 * density * V_sq
 
-        # --- Coefficients ---
-
-        # 1. Linear Model
+        # --- Aerodynamic Coefficients ---
         cl_linear = self.params.C_L_0 + self.params.C_L_alpha * alpha
         cd_linear = self.params.C_D_0 + self.params.K * (cl_linear**2)
-        # Linear Pitch Moment
-        cm_linear = self.params.C_m_0 + self.params.C_m_alpha * alpha
 
-        # 2. Stall Model (High Alpha)
-        # Lift drops, Drag spikes
-        cl_stall = 0.8 * np.sin(2 * alpha)
-        cd_stall = 1.8 * np.sin(alpha)**2 + self.params.C_D_0
+        cl_stall = 1.0 * np.sin(2 * alpha)
+        cd_stall = 2.0 * np.sin(alpha)**2 + self.params.C_D_0
 
-        # [CRITICAL FIX] Deep Stall Restoring Moment
-        # When Alpha > 60 deg, the aircraft naturally wants to nose down (stable).
-        # We model this as a strong negative Cm proportional to sin(alpha).
-        # 关键修复：深失速恢复力矩。当攻角过大时，产生自然的低头力矩。
-        cm_stall = -0.8 * np.sin(alpha)
-
-        # 3. Blending
         sigma = self._sigmoid(alpha, self.params.alpha_stall, self.params.stall_width)
 
         C_L = (1 - sigma) * cl_linear + sigma * cl_stall
         C_D = (1 - sigma) * cd_linear + sigma * cd_stall
 
-        # Blend Pitch Moment
-        C_m_static = (1 - sigma) * cm_linear + sigma * cm_stall
-
-        # 4. Add Damping & Controls
-        # Elevator effectiveness drops at high alpha
-        elevator_eff = (1 - 0.6 * sigma)
+        elevator_eff = (1 - 0.5 * sigma)
+        C_L += (0.5 * controls.elevator) * elevator_eff
 
         q_hat = (self.params.c * state.rates[1]) / (2 * V_tas)
+        C_m = (self.params.C_m_0 + self.params.C_m_alpha * alpha +
+               self.params.C_m_q * q_hat + -1.5 * controls.elevator * elevator_eff)
 
-        # Total Pitch Moment
-        C_m = C_m_static + (self.params.C_m_q * q_hat) + (-1.2 * controls.elevator * elevator_eff)
-
-        # Lateral
         p_hat = (self.params.b * state.rates[0]) / (2 * V_tas)
         r_hat = (self.params.b * state.rates[2]) / (2 * V_tas)
 
@@ -91,15 +80,15 @@ class Aerodynamics:
         C_n = (self.params.C_n_delta_r * controls.rudder) + \
               (self.params.C_n_beta * beta) + (self.params.C_n_r * r_hat)
 
-        # 5. Final Forces & Moments
+        # --- Forces & Moments ---
         L = q_bar * self.params.S * C_L
         D = q_bar * self.params.S * C_D
-
         Fx = -D * np.cos(alpha) + L * np.sin(alpha)
         Fz = -D * np.sin(alpha) - L * np.cos(alpha)
 
-        max_thrust = 122600.0 * 2 # Su-27 has 2 engines! (~245kN total with AB)
-        Fx += max_thrust * controls.throttle
+        # --- FIX: Use configured max_thrust instead of hardcoded value ---
+        # 修复：使用配置的最大推力，而不是硬编码的值
+        Fx += self.params.max_thrust * controls.throttle
 
         Roll = q_bar * self.params.S * self.params.b * C_l
         Pitch = q_bar * self.params.S * self.params.c * C_m

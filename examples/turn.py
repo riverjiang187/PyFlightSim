@@ -37,7 +37,17 @@ def main():
     kinematics = Kinematics(mass_props)
 
     ap = ac_cfg['aero_params']
-    aero = Aerodynamics(AeroParams(**{k: v for k, v in ap.items() if k in AeroParams.__annotations__}))
+    aero_params = AeroParams(
+        S=ap['S'], b=ap['b'], c=ap['c'],
+        C_L_0=ap['C_L_0'], C_L_alpha=ap['C_L_alpha'],
+        C_D_0=ap['C_D_0'], K=ap['K'],
+        C_m_0=ap['C_m_0'], C_m_alpha=ap['C_m_alpha'], C_m_q=ap['C_m_q'],
+        # Ensure stall parameters are loaded
+        alpha_stall=ap.get('alpha_stall', 0.61),
+        stall_width=ap.get('stall_width', 0.15),
+        max_thrust=ap.get('max_thrust', 5000.0)
+    )
+    aero = Aerodynamics(aero_params)
 
     imu = IMU()
     adc = AirDataComputer()

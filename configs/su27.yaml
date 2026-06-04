@@ -16,6 +16,9 @@ aero_params:
   b: 14.7         # Wingspan (m)
   c: 4.9          # Mean Aerodynamic Chord (m)
 
+  # --- NEW: Propulsion / 动力系统 ---
+  max_thrust: 130000.0  # Newtons (F110 engine with Afterburner)
+
   # Longitudinal
   C_L_0: 0.05
   C_L_alpha: 4.5

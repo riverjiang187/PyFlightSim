@@ -77,7 +77,9 @@ def main():
         C_n_delta_r=ap.get('C_n_delta_r', 0.05),
         C_n_beta=ap.get('C_n_beta', 0.1),
         C_l_p=ap.get('C_l_p', -0.4),
-        C_n_r=ap.get('C_n_r', -0.2)
+        C_n_r=ap.get('C_n_r', -0.2),
+        # --- FIX: Pass max_thrust from config ---
+        max_thrust=ap.get('max_thrust', 5000.0)
     )
     aero = Aerodynamics(aero_params)
 
