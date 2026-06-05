@@ -5,7 +5,7 @@ Supports Euler and Quaternion modes.
 
 Usage:
     python plot_results.py --file flight_data.csv --mode euler
-    python plot_results.py --file cobra_data.csv --mode quat
+    python plot_results.py --file flight_data.csv --mode quat
 """
 
 import matplotlib.pyplot as plt

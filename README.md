@@ -73,13 +73,6 @@ python plot_results.py --file flight_data.csv --mode quat
 
 ## 🎮 Advanced Usage
 
-### Su-27 Flanker Cobra Maneuver
-Simulate the famous "Pugachev's Cobra" using the Su-27 configuration. This demonstrates the non-linear aerodynamics (deep stall) and the robustness of the quaternion kernel at >90° pitch.
-```bash
-python examples/cobra.py
-python plot_results.py --file cobra_data.csv --mode quat
-```
-
 ### Coordinated Turn
 Test lateral stability and bank-to-turn logic:
 ```bash
