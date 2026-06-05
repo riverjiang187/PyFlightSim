@@ -32,6 +32,7 @@ env/
 flight_data.csv
 stall_data.csv
 cobra_data.csv
+*.png
 
 # OS
 .DS_Store
