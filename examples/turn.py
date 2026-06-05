@@ -52,7 +52,7 @@ def main():
     imu = IMU()
     adc = AirDataComputer()
     gps = GPS()
-    logger = DataLogger()
+    logger = DataLogger(filename="turn_data.csv")
     autopilot = Autopilot(ap_cfg)
     mixer = Mixer(ac_cfg.get('mixer_type', 'standard'))
 
@@ -103,7 +103,7 @@ def main():
             print(f"T={t:.1f} | Bank={roll_deg:.1f}° | Hdg={heading:.1f}°")
 
     output_file = "turn_data.csv"
-    logger.save_to_csv(output_file)
+    logger.close()
     print(f"Done. Saved to {output_file}")
 
 if __name__ == "__main__":

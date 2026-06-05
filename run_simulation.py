@@ -87,7 +87,7 @@ def main():
     imu = IMU()
     adc = AirDataComputer()
     gps = GPS(home_lat=37.6188, home_lon=-122.3750)
-    logger = DataLogger()
+    logger = DataLogger(filename="flight_data.csv")
     autopilot = Autopilot(ap_cfg)
     mixer = Mixer(ac_cfg.get('mixer_type', 'standard'))
 
@@ -166,7 +166,7 @@ def main():
             print(f"T={current_time:5.1f} | Alt={g_read.altitude:7.1f} | Lat={g_read.latitude:.4f}")
 
     # 6. Finalize
-    logger.save_to_csv("flight_data.csv")
+    logger.close()
     print("=== Simulation Complete ===")
 
 if __name__ == "__main__":
