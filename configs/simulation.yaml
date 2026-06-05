@@ -3,7 +3,7 @@
 
 time:
   dt: 0.02            # Integration time step (s) / 积分步长
-  duration: 160.0      # Total duration (s) / 总时长
+  duration: 250.0      # Total duration (s) / 总时长
 
 initial_state:
   # NED Frame (m) / 北东下坐标系

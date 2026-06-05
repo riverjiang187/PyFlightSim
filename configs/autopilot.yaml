@@ -20,29 +20,26 @@ limits:
 # --- Longitudinal Loops / 纵向回路 ---
 
 # 1. Outer Loop: Altitude -> Target Climb Rate
-#    外环：高度 -> 目标爬升率
 altitude_hold:
-  kp: 0.05    # Very low gain for gentle capture / 极低增益，实现柔和捕获
-  ki: 0.0005  # Slow integration to remove error / 缓慢积分以消除误差
-  kd: 0.0
+  kp: 0.1     # [回调] 适中的增益
+  ki: 0.001   # [微调] 保持极小的积分，防止 Windup
+  kd: 0.0     # [绝对禁止] 外环严禁使用 D 项！
   out_min: -3.0
   out_max: 3.0
 
 # 2. Middle Loop: Climb Rate -> Target Pitch
-#    中环：爬升率 -> 目标俯仰角
 climb_rate_hold:
-  kp: 0.02    # Low gain to prevent overshooting / 低增益以防止超调
+  kp: 0.02    # [回调] 保持低增益，防止机头动作过猛
   ki: 0.005
   kd: 0.0
   out_min: -0.20
   out_max: 0.20
 
 # 3. Inner Loop: Pitch -> Elevator
-#    内环：俯仰角 -> 升降舵
 pitch_hold:
-  kp: -0.2    # Reduced sensitivity / 降低灵敏度
+  kp: -0.5    # [回调] 保持柔和
   ki: -0.02
-  kd: -0.08   # Minimal damping to stop bounce, low enough to avoid jitter / 极小阻尼防止弹跳，且不引起颤振
+  kd: -0.01   # 内环可以有一点点 D，因为姿态角速度 (Gyro) 的噪声比高度小得多
   out_min: -1.0
   out_max: 1.0
 
