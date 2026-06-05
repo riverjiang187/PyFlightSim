@@ -1,6 +1,11 @@
 """
 Example: Coordinated Turn (Closed-Loop).
 Demonstrates Bank-to-Turn logic and Turn Coordinator (ARI).
+Includes a Warm-up period for dynamic trimming.
+
+示例：协调转弯 (闭环)。
+演示压坡度转弯逻辑和转弯协调器 (ARI)。
+包含预热期以实现动态配平。
 """
 import sys
 import os
@@ -14,6 +19,7 @@ if project_root not in sys.path:
 
 from tools.loader import Loader
 from tools.logger import DataLogger
+from modules.utils.math3d import MathUtils
 from modules.dynamics.state import AircraftState
 from modules.dynamics.kinematics import Kinematics, MassProperties
 from modules.dynamics.integrator import Integrator
@@ -26,11 +32,16 @@ from modules.control.autopilot import Autopilot
 from modules.control.mixer import Mixer
 
 def main():
-    print("=== Example: Coordinated Turn (Closed-Loop) ===")
+    print("=== Example: Coordinated Turn (with Warm-up) ===")
 
     # Load Configs
-    ac_cfg = Loader.load_yaml("configs/aircraft.yaml")
-    ap_cfg = Loader.load_yaml("configs/autopilot.yaml")
+    try:
+        ac_cfg = Loader.load_yaml("configs/aircraft.yaml")
+        ap_cfg = Loader.load_yaml("configs/autopilot.yaml")
+        sim_cfg = Loader.load_yaml("configs/simulation.yaml")
+    except FileNotFoundError as e:
+        print(f"Error loading config: {e}")
+        return
 
     mp = ac_cfg['mass_props']
     mass_props = MassProperties(mp['mass'], mp['Ixx'], mp['Iyy'], mp['Izz'])
@@ -47,35 +58,42 @@ def main():
     mixer = Mixer(ac_cfg.get('mixer_type', 'standard'))
 
     # Initial State (Level Flight, Heading North)
-    init_pos = np.array([0, 0, -2000])
+    init_pos = np.array([0, 0, -2010])
     init_vel = np.array([60, 0, 0])
     init_quat = np.array([1.0, 0.0, 0.0, 0.0])
     aircraft = AircraftState(pos=init_pos, vel=init_vel, att=init_quat)
 
     controls = ControlInputs()
-    dt = 0.02
-    t_max = 40.0
+    dt = sim_cfg['time']['dt']
+
+    # --- Timeline Setup ---
+    warmup_time = 100.0  # 10 seconds to stabilize / 10秒预热稳定
+    turn_time = 40.0    # 40 seconds for the turn / 40秒转弯
+    t_max = warmup_time + turn_time
+    num_steps = int(t_max / dt)
     temp_state = AircraftState()
 
-    # Setup Mission: Turn East (90 deg)
+    # Initial Targets (Straight and Level)
     tgt_alt = 2000.0
     tgt_spd = 60.0
-    tgt_hdg = 90.0
+    tgt_hdg = 0.0
+    autopilot.set_targets(tgt_alt, tgt_spd, tgt_hdg)
 
-    print(f"Commanding Turn to Heading {tgt_hdg}°...")
+    print(f"Phase 1: Warm-up and Trim ({warmup_time}s)...")
 
-    for step in range(int(t_max/dt)):
+    for step in range(num_steps):
         t = step * dt
 
         # --- MISSION LOGIC ---
-        # At T=2.0s, command the turn
-        if t >= 2.0 and t < 2.05: # Just set it once
+        # At the end of warm-up, command the turn
+        if t >= warmup_time and t < warmup_time + dt:
+            tgt_hdg = 90.0 # Turn East
             autopilot.set_targets(tgt_alt, tgt_spd, tgt_hdg)
+            print(f"\nPhase 2: Commanding Turn to Heading {tgt_hdg}° at T={t:.1f}s...")
 
         # --- Physics Loop ---
         rho, _, _, _ = Atmosphere.get_properties(-aircraft.pos[2])
-        # No wind for this test to clearly see the ARI effect
-        wind = np.zeros(3)
+        wind = np.zeros(3) # No wind for clean turn test
         forces, moments = aero.get_forces_and_moments(aircraft, rho, controls, wind)
 
         imu.update(aircraft, forces, mass_props.mass)
@@ -83,7 +101,6 @@ def main():
         gps.update(aircraft)
 
         # --- Control ---
-        # Let the Autopilot do ALL the work
         p, r, y, th = autopilot.update(imu.get_data(), adc.get_reading(), dt)
         controls = mixer.mix(p, r, y, th)
 
@@ -101,7 +118,7 @@ def main():
         if step % int(2.0/dt) == 0:
             roll_deg = np.degrees(imu.get_data().euler[0])
             heading = np.degrees(imu.get_data().euler[2])
-            print(f"T={t:.1f} | Bank={roll_deg:.1f}° | Hdg={heading:.1f}°")
+            print(f"T={t:4.1f} | Bank={roll_deg:5.1f}° | Hdg={heading:5.1f}° | Alt={-aircraft.pos[2]:6.1f}m")
 
     output_file = "turn_data.csv"
     logger.close()
