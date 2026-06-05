@@ -40,9 +40,9 @@ climb_rate_hold:
 # 3. Inner Loop: Pitch -> Elevator
 #    内环：俯仰角 -> 升降舵
 pitch_hold:
-  kp: -0.5    # Reduced sensitivity / 降低灵敏度
+  kp: -0.2    # Reduced sensitivity / 降低灵敏度
   ki: -0.02
-  kd: -0.01   # Minimal damping to stop bounce, low enough to avoid jitter / 极小阻尼防止弹跳，且不引起颤振
+  kd: -0.08   # Minimal damping to stop bounce, low enough to avoid jitter / 极小阻尼防止弹跳，且不引起颤振
   out_min: -1.0
   out_max: 1.0
 
@@ -82,3 +82,8 @@ yaw_damper:
   kd: 0.0
   out_min: -0.3
   out_max: 0.3
+
+# --- Turn Coordinator (Aileron-to-Rudder Interconnect) ---
+# 增加前馈增益，以克服偏航阻尼器的抵抗和运动学侧滑
+turn_coordinator:
+  k_ari: 0.8  # [修改] 从 0.2 增加到 0.8 (甚至可以试 1.0)

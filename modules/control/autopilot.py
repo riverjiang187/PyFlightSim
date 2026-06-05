@@ -1,12 +1,19 @@
 """
 Autopilot Core Logic.
-Implements 3-Axis Cascaded PID Control using Quaternion-based Error.
-Includes Vector-based Heading calculation and Yaw Damper with Washout Filter.
+Implements Advanced Control Laws:
+1. Vertical Speed Mode (Altitude -> Climb Rate -> Pitch).
+2. Yaw Damper (Yaw Rate -> Rudder).
+3. Turn Coordinator (Beta -> Rudder) [NEW].
+4. Gain Scheduling.
 
 自动驾驶仪核心逻辑。
-使用基于四元数误差的三轴级联 PID 控制。
-包含基于矢量的航向计算以及带冲刷滤波器的偏航阻尼器。
+实现高级控制律：
+1. 垂直速度模式 (高度 -> 爬升率 -> 俯仰)。
+2. 偏航阻尼器 (偏航角速度 -> 方向舵)。
+3. 转弯协调器 (侧滑角 -> 方向舵) [新增]。
+4. 增益调度。
 """
+
 import numpy as np
 from modules.control.pid import PID
 from modules.utils.math3d import MathUtils
@@ -39,6 +46,17 @@ class Autopilot:
         y = config.get('yaw_damper', {'kp':0, 'ki':0, 'kd':0, 'out_min':0, 'out_max':0})
         self.yaw_damp_pid = PID(y['kp'], y['ki'], y['kd'], y['out_min'], y['out_max'])
 
+        # --- FIX: Beta Feedback Controller Sign ---
+        # 修复：侧滑角反馈控制器的符号
+        # Target Beta is 0.0.
+        # If Beta > 0 (Nose left), Error = 0 - Beta < 0.
+        # We need Rudder > 0 (Yaw Right) to correct.
+        # Therefore, Kp must be NEGATIVE.
+        # 因此，Kp 必须是负数。
+        self.beta_pid = PID(kp=-2.0, ki=-0.1, kd=0.0, out_min=-0.5, out_max=0.5)
+
+        self.k_ari = config.get('turn_coordinator', {}).get('k_ari', 0.2)
+
         # --- Speed ---
         s = config['speed_hold']
         self.speed_pid = PID(s['kp'], s['ki'], s['kd'], s['out_min'], s['out_max'])
@@ -47,10 +65,8 @@ class Autopilot:
         self.target_spd = 60.0
         self.target_hdg = 0.0
 
-        # --- FIX: Washout Filter State ---
-        # 修复：冲刷滤波器状态变量
         self.yaw_rate_lowpass = 0.0
-        self.washout_time_constant = 2.0 # Seconds (Typical value for aircraft)
+        self.washout_time_constant = 2.0
 
     def set_targets(self, alt, speed, heading_deg=0.0):
         self.target_alt = alt
@@ -103,24 +119,24 @@ class Autopilot:
 
         roll_cmd = self.roll_pid.update(roll_err, 0.0, dt, scale=scaling)
 
-        # --- FIX: Yaw Damper with Washout Filter ---
-        # 修复：带冲刷滤波器的偏航阻尼器
-        raw_yaw_rate = imu.angular_rates[2]
+        # --- Directional Control (Rudder) ---
 
-        # 1. Low-pass filter the yaw rate to find the "steady state" turn rate
-        #    低通滤波提取稳态转弯角速度
+        # A. Yaw Damper (High-pass filtered yaw rate)
+        raw_yaw_rate = imu.angular_rates[2]
         alpha_filter = dt / (self.washout_time_constant + dt)
         self.yaw_rate_lowpass = (1.0 - alpha_filter) * self.yaw_rate_lowpass + alpha_filter * raw_yaw_rate
-
-        # 2. High-pass filter (Washout) = Raw - LowPass
-        #    高通滤波 (冲刷) = 原始值 - 低通值
-        # This isolates the high-frequency gusts/oscillations
-        # 这分离出了高频阵风/震荡
         washed_yaw_rate = raw_yaw_rate - self.yaw_rate_lowpass
+        yaw_damp_cmd = self.yaw_damp_pid.update(0.0, washed_yaw_rate, dt, scale=scaling)
 
-        # 3. Feed the washed signal to the PID
-        #    将冲刷后的信号喂给 PID
-        rud_cmd = self.yaw_damp_pid.update(0.0, washed_yaw_rate, dt, scale=scaling)
+        # B. Turn Coordinator (Beta Feedback)
+        # Target Beta is 0.0
+        beta_cmd = self.beta_pid.update(0.0, air_data.beta, dt, scale=scaling)
+
+        # C. Aileron-Rudder Interconnect (Feedforward)
+        ari_cmd = self.k_ari * roll_cmd
+
+        # Final Rudder Command = Damper + Beta Feedback + ARI
+        rud_cmd = np.clip(yaw_damp_cmd + beta_cmd + ari_cmd, -1.0, 1.0)
 
         # =========================================================
         # 3. Speed Control
