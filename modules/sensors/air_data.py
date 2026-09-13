@@ -22,30 +22,27 @@ class AirDataComputer:
     def __init__(self):
         self.reading = AirDataReading()
 
-    def update(self, state):
-        # 1. Airspeed / 空速
-        self.reading.airspeed_tas = np.linalg.norm(state.vel)
+    def update(self, state, wind_body: np.ndarray = np.zeros(3)) -> None:
+        # 1. Flow Angles & Airspeed / 气流角与空速
+        v_air_vec = state.vel - wind_body
+        u, v, w = v_air_vec
+        V_sq = u**2 + v**2 + w**2
+        V_tas = np.sqrt(V_sq)
+        self.reading.airspeed_tas = V_tas
+
+        if V_tas > 0.1:
+            self.reading.alpha = np.arctan2(w, u)
+            self.reading.beta = np.arcsin(np.clip(v / V_tas, -1.0, 1.0))
+        else:
+            self.reading.alpha = 0.0
+            self.reading.beta = 0.0
 
         # 2. Altitude / 高度
         self.reading.altitude_baro = -state.pos[2]
 
         # 3. Climb Rate / 爬升率
-        # We need Vertical Velocity in NED frame (Down is positive)
-        # Climb Rate = -Vel_Down_NED
-        # Transform Body Velocity to NED
-        # 我们需要 NED 坐标系下的垂直速度（向下为正）
-        # 爬升率 = -Vel_Down_NED
-        # 将机体速度转换到 NED
         R_b_n = MathUtils.quat_to_rotation_matrix(state.q)
         vel_ned = R_b_n @ state.vel
         self.reading.climb_rate = -vel_ned[2]
-
-        # 4. Flow Angles / 气流角
-        u, v, w = state.vel
-        if self.reading.airspeed_tas > 0.1:
-            self.reading.alpha = np.arctan2(w, u)
-            self.reading.beta = np.arcsin(np.clip(v / self.reading.airspeed_tas, -1, 1))
-        else:
-            self.reading.alpha = 0.0; self.reading.beta = 0.0
 
     def get_reading(self): return self.reading

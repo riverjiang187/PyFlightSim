@@ -140,7 +140,7 @@ def main():
         forces_body, moments_body = aero.get_forces_and_moments(aircraft, rho, controls, wind_gusts)
 
         imu.update(aircraft, forces_body, mass_props.mass)
-        adc.update(aircraft)
+        adc.update(aircraft, wind_gusts)
         gps.update(aircraft)
 
         # GNC
