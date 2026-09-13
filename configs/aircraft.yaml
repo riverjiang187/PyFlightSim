@@ -28,6 +28,13 @@ aero_params:
   C_m_q: -10.0
 
   # Lateral / 横侧向
+  C_Y_beta: -0.31
+  C_Y_delta_r: 0.187
+  C_Y_p: 0.0
+  C_Y_r: 0.0
+  C_l_beta: -0.089
+  C_l_delta_r: 0.010
+  C_l_r: 0.0
   C_l_delta_a: 0.1
   C_n_delta_r: 0.05
   C_n_beta: 0.1

@@ -16,6 +16,13 @@ class AeroParams:
     C_L_0: float; C_L_alpha: float
     C_D_0: float; K: float
     C_m_0: float; C_m_alpha: float; C_m_q: float
+    C_Y_beta: float = -0.31
+    C_Y_delta_r: float = 0.187
+    C_Y_p: float = 0.0
+    C_Y_r: float = 0.0
+    C_l_beta: float = -0.089
+    C_l_delta_r: float = 0.010
+    C_l_r: float = 0.0
     C_l_delta_a: float = 0.1
     C_n_delta_r: float = 0.05
     C_n_beta: float = 0.1
@@ -76,7 +83,13 @@ class Aerodynamics:
         p_hat = (self.params.b * state.rates[0]) / (2 * V_tas)
         r_hat = (self.params.b * state.rates[2]) / (2 * V_tas)
 
-        C_l = (self.params.C_l_delta_a * controls.aileron) + (self.params.C_l_p * p_hat)
+        C_Y = (self.params.C_Y_beta * beta) + (self.params.C_Y_delta_r * controls.rudder) + \
+              (self.params.C_Y_p * p_hat) + (self.params.C_Y_r * r_hat)
+
+        C_l = (self.params.C_l_beta * beta) + (self.params.C_l_delta_a * controls.aileron) + \
+              (self.params.C_l_delta_r * controls.rudder) + (self.params.C_l_p * p_hat) + \
+              (self.params.C_l_r * r_hat)
+
         C_n = (self.params.C_n_delta_r * controls.rudder) + \
               (self.params.C_n_beta * beta) + (self.params.C_n_r * r_hat)
 
@@ -85,6 +98,7 @@ class Aerodynamics:
         D = q_bar * self.params.S * C_D
         Fx = -D * np.cos(alpha) + L * np.sin(alpha)
         Fz = -D * np.sin(alpha) - L * np.cos(alpha)
+        Fy = q_bar * self.params.S * C_Y
 
         # --- FIX: Use configured max_thrust instead of hardcoded value ---
         # 修复：使用配置的最大推力，而不是硬编码的值
@@ -94,4 +108,4 @@ class Aerodynamics:
         Pitch = q_bar * self.params.S * self.params.c * C_m
         Yaw = q_bar * self.params.S * self.params.b * C_n
 
-        return np.array([Fx, 0.0, Fz]), np.array([Roll, Pitch, Yaw])
+        return np.array([Fx, Fy, Fz]), np.array([Roll, Pitch, Yaw])
