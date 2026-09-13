@@ -73,6 +73,8 @@ def main():
         C_L_0=ap['C_L_0'], C_L_alpha=ap['C_L_alpha'],
         C_D_0=ap['C_D_0'], K=ap['K'],
         C_m_0=ap['C_m_0'], C_m_alpha=ap['C_m_alpha'], C_m_q=ap['C_m_q'],
+        C_L_delta_e=ap.get('C_L_delta_e', 0.5),
+        C_m_delta_e=ap.get('C_m_delta_e', -1.5),
         C_l_delta_a=ap.get('C_l_delta_a', 0.1),
         C_n_delta_r=ap.get('C_n_delta_r', 0.05),
         C_n_beta=ap.get('C_n_beta', 0.1),

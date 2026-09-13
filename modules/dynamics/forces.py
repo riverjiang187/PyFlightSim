@@ -16,6 +16,8 @@ class AeroParams:
     C_L_0: float; C_L_alpha: float
     C_D_0: float; K: float
     C_m_0: float; C_m_alpha: float; C_m_q: float
+    C_L_delta_e: float = 0.5
+    C_m_delta_e: float = -1.5
     C_Y_beta: float = -0.31
     C_Y_delta_r: float = 0.187
     C_Y_p: float = 0.0
@@ -74,11 +76,11 @@ class Aerodynamics:
         C_D = (1 - sigma) * cd_linear + sigma * cd_stall
 
         elevator_eff = (1 - 0.5 * sigma)
-        C_L += (0.5 * controls.elevator) * elevator_eff
+        C_L += (self.params.C_L_delta_e * controls.elevator) * elevator_eff
 
         q_hat = (self.params.c * state.rates[1]) / (2 * V_tas)
         C_m = (self.params.C_m_0 + self.params.C_m_alpha * alpha +
-               self.params.C_m_q * q_hat + -1.5 * controls.elevator * elevator_eff)
+               self.params.C_m_q * q_hat + self.params.C_m_delta_e * controls.elevator * elevator_eff)
 
         p_hat = (self.params.b * state.rates[0]) / (2 * V_tas)
         r_hat = (self.params.b * state.rates[2]) / (2 * V_tas)
