@@ -100,7 +100,6 @@ graph TD
   * `modules/sensors/imu.py`, `gps.py`, `air_data.py`
   * `configs/aircraft.yaml` (新增传感器物理参数)
   * `configs/simulation.yaml` (新增传感器全局噪声开关)
-  * `modules/sensors/estimator.py` (新建：独立状态估计器)
 * **缺陷成因剖析**：
   现有传感器是对真值的直通输出（透传），导致任何状态估计算法（如卡尔曼滤波 EKF、互补滤波）在当前环境下失去验证意义。引入真实传感器噪声后，直接反馈给下游会导致高频抖动。因此我们需要在底层设计清晰的、提供显式开关的 Estimator 接口，供未来的新架构和新飞控调用，而不是采用隐式的伪装接口。
 * **技术设计与数学模型**：
