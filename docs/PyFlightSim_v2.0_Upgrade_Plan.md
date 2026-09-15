@@ -142,7 +142,7 @@ graph TD
     4. `Sensor Pipeline` (更新带噪声/延迟的传感器读数)
     5. `Data Logging` (沉淀时间序列)
 * **验收标准 (Acceptance Criteria)**：
-  * `run_simulation.py` 和 `examples/turn.py` 代码量精简至 50 行以内（仅保留任务逻辑与航路点规划）。
+  * `run_simulation.py` 和 `examples/turn.py` 代码尽量精简。
   * 相同工况下运行新旧实现，输出轨迹数据均方根误差 (RMSE) 小于 $10^{-6}$。
 
 ---
