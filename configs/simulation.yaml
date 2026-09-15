@@ -22,3 +22,5 @@ environment:
     enable: true
     # Intensity Sigma [u, v, w] / 湍流强度
     intensity: [0.6, 0.6, 0.5]
+  sensors:
+    enable_noise: true

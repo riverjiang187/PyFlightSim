@@ -28,6 +28,7 @@ from modules.environment.atmosphere import Atmosphere
 from modules.sensors.imu import IMU
 from modules.sensors.air_data import AirDataComputer
 from modules.sensors.gps import GPS
+from modules.sensors.estimator import Estimator
 from modules.control.autopilot import Autopilot
 from modules.control.mixer import Mixer
 
@@ -50,9 +51,14 @@ def main():
     ap = ac_cfg['aero_params']
     aero = Aerodynamics(AeroParams(**{k: v for k, v in ap.items() if k in AeroParams.__annotations__}))
 
-    imu = IMU()
-    adc = AirDataComputer()
-    gps = GPS()
+    env_cfg = sim_cfg.get('environment', {})
+    enable_noise = env_cfg.get('sensors', {}).get('enable_noise', False)
+    sensor_cfg = ac_cfg.get('sensors', {})
+
+    imu = IMU(config=sensor_cfg.get('imu'), enable_noise=enable_noise)
+    adc = AirDataComputer(config=sensor_cfg.get('adc'), enable_noise=enable_noise)
+    gps = GPS(config=sensor_cfg.get('gps'), enable_noise=enable_noise)
+    estimator = Estimator()
     logger = DataLogger(filename="turn_data.csv")
     autopilot = Autopilot(ap_cfg)
     mixer = Mixer(ac_cfg.get('mixer_type', 'standard'))
@@ -96,12 +102,15 @@ def main():
         wind = np.zeros(3) # No wind for clean turn test
         forces, moments = aero.get_forces_and_moments(aircraft, rho, controls, wind)
 
-        imu.update(aircraft, forces, mass_props.mass)
+        imu.update(aircraft, forces, mass_props.mass, dt)
         adc.update(aircraft, wind)
-        gps.update(aircraft)
+        gps.update(aircraft, dt)
+        
+        estimator.update(imu.get_data(), gps.get_reading(), adc.get_reading(), dt)
 
         # --- Control ---
-        p, r, y, th = autopilot.update(imu.get_data(), adc.get_reading(), dt)
+        est_state = estimator.get_estimated_state(use_filtered=True)
+        p, r, y, th = autopilot.update(est_state, dt)
         controls = mixer.mix(p, r, y, th)
 
         # --- Integrate ---

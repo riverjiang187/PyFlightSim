@@ -89,7 +89,10 @@ class Autopilot:
         current_heading = np.arctan2(east, north)
         return self._wrap_angle(target_heading - current_heading)
 
-    def update(self, imu, air_data, dt):
+    def update(self, estimated_state, dt):
+        imu = estimated_state.imu
+        air_data = estimated_state.adc
+        
         current_speed = max(air_data.airspeed_tas, 10.0)
         scaling = (self.design_speed / current_speed) ** 2
         scaling = np.clip(scaling, 0.2, 5.0)

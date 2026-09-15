@@ -42,3 +42,24 @@ aero_params:
   C_n_beta: 0.1
   C_l_p: -0.4
   C_n_r: -0.2
+
+# --- NEW: Sensors / 传感器配置 (P1-1) ---
+sensors:
+  adc:
+    airspeed_noise_std: 0.5
+    alpha_noise_std: 0.01
+    beta_noise_std: 0.01
+    altitude_noise_std: 1.0
+    climb_rate_noise_std: 0.2
+  imu:
+    gyro_noise_std: 0.005      # rad/s
+    gyro_bias_tau: 100.0       # s
+    gyro_bias_noise_std: 0.0001
+    accel_noise_std: 0.05      # m/s^2
+    accel_bias_tau: 100.0
+    accel_bias_noise_std: 0.001
+  gps:
+    update_rate: 10.0          # Hz
+    delay: 0.15                # s
+    horizontal_std: 1.5        # m
+    vertical_std: 3.0          # m

@@ -20,6 +20,7 @@ from modules.environment.turbulence import DrydenTurbulence
 from modules.sensors.imu import IMU
 from modules.sensors.air_data import AirDataComputer
 from modules.sensors.gps import GPS
+from modules.sensors.estimator import Estimator
 from modules.control.autopilot import Autopilot
 from modules.control.mixer import Mixer
 
@@ -85,17 +86,21 @@ def main():
     )
     aero = Aerodynamics(aero_params)
 
+    # Environment
+    env_cfg = sim_cfg.get('environment', {})
+    turb_cfg = env_cfg.get('turbulence', {})
+    enable_noise = env_cfg.get('sensors', {}).get('enable_noise', False)
+    sensor_cfg = ac_cfg.get('sensors', {})
+
     # 3. Initialize Systems
-    imu = IMU()
-    adc = AirDataComputer()
-    gps = GPS(home_lat=37.6188, home_lon=-122.3750)
+    imu = IMU(config=sensor_cfg.get('imu'), enable_noise=enable_noise)
+    adc = AirDataComputer(config=sensor_cfg.get('adc'), enable_noise=enable_noise)
+    gps = GPS(home_lat=37.6188, home_lon=-122.3750, config=sensor_cfg.get('gps'), enable_noise=enable_noise)
+    estimator = Estimator()
     logger = DataLogger(filename="flight_data.csv")
     autopilot = Autopilot(ap_cfg)
     mixer = Mixer(ac_cfg.get('mixer_type', 'standard'))
 
-    # Environment
-    env_cfg = sim_cfg.get('environment', {})
-    turb_cfg = env_cfg.get('turbulence', {})
     if turb_cfg.get('enable', False):
         turb = DrydenTurbulence(intensity=turb_cfg.get('intensity'))
         print("Environment: Turbulence ON")
@@ -141,12 +146,15 @@ def main():
 
         forces_body, moments_body = aero.get_forces_and_moments(aircraft, rho, controls, wind_gusts)
 
-        imu.update(aircraft, forces_body, mass_props.mass)
+        imu.update(aircraft, forces_body, mass_props.mass, dt)
         adc.update(aircraft, wind_gusts)
-        gps.update(aircraft)
+        gps.update(aircraft, dt)
+        
+        estimator.update(imu.get_data(), gps.get_reading(), adc.get_reading(), dt)
 
         # GNC
-        p_cmd, r_cmd, y_cmd, t_cmd = autopilot.update(imu.get_data(), adc.get_reading(), dt)
+        est_state = estimator.get_estimated_state(use_filtered=True)
+        p_cmd, r_cmd, y_cmd, t_cmd = autopilot.update(est_state, dt)
         controls = mixer.mix(p_cmd, r_cmd, y_cmd, t_cmd)
 
         # Physics Integration

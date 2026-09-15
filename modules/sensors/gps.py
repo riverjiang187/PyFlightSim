@@ -7,9 +7,11 @@ Includes singularity protection near the poles.
 将局部 NED 坐标转换为大地坐标 (经纬度)。
 包含极点附近的奇异性保护。
 """
-import numpy as np
+import copy
+from collections import deque
 from dataclasses import dataclass
 from modules.utils.math3d import MathUtils
+import numpy as np
 
 @dataclass
 class GPSReading:
@@ -20,41 +22,83 @@ class GPSReading:
     ground_course: float = 0.0
 
 class GPS:
-    def __init__(self, home_lat=37.7749, home_lon=-122.4194):
+    def __init__(self, home_lat=37.7749, home_lon=-122.4194, config=None, enable_noise=False):
         self.home_lat = home_lat
         self.home_lon = home_lon
         self.reading = GPSReading()
         self.R_EARTH = 6378137.0
         self.DEG_TO_RAD = np.pi / 180.0
         self.RAD_TO_DEG = 180.0 / np.pi
+        
+        self.enable_noise = enable_noise
+        if config is None: config = {}
+        
+        self.update_rate = config.get('update_rate', 10.0)
+        self.delay = config.get('delay', 0.15)
+        self.horizontal_std = config.get('horizontal_std', 1.5)
+        self.vertical_std = config.get('vertical_std', 3.0)
+        
+        self.update_period = 1.0 / max(self.update_rate, 0.1)
+        self.time_since_last_update = self.update_period  # Trigger immediately on first step
+        
+        self.delay_buffer = deque()
+        self.current_time = 0.0
 
-    def update(self, state):
-        # 1. Latitude Calculation / 纬度计算
-        # Flat Earth Projection / 平地投影近似
-        d_lat_rad = state.pos[0] / self.R_EARTH
-        self.reading.latitude = self.home_lat + (d_lat_rad * self.RAD_TO_DEG)
+    def update(self, state, dt=0.01):
+        self.current_time += dt
+        self.time_since_last_update += dt
+        
+        # 1. ZOH Update Step
+        if self.time_since_last_update >= self.update_period - 1e-5:
+            # Subtract instead of modulo to avoid floating point math issues
+            self.time_since_last_update -= self.update_period
+            
+            new_reading = GPSReading()
+            
+            # Noise generation
+            n_err = np.random.normal(0, self.horizontal_std) if self.enable_noise else 0.0
+            e_err = np.random.normal(0, self.horizontal_std) if self.enable_noise else 0.0
+            alt_err = np.random.normal(0, self.vertical_std) if self.enable_noise else 0.0
+            
+            # Latitude
+            d_lat_rad = (state.pos[0] + n_err) / self.R_EARTH
+            new_reading.latitude = self.home_lat + (d_lat_rad * self.RAD_TO_DEG)
 
-        # --- FIX: Pole Singularity Protection ---
-        # 修复：极点奇异性保护
-        # Prevent division by zero when latitude is near +/- 90 degrees
-        # 防止纬度接近 +/- 90 度时除以零
-        safe_lat = np.clip(self.home_lat, -89.9, 89.9)
-        scale = np.cos(safe_lat * self.DEG_TO_RAD)
+            # Longitude
+            safe_lat = np.clip(self.home_lat, -89.9, 89.9)
+            scale = np.cos(safe_lat * self.DEG_TO_RAD)
+            d_lon_rad = (state.pos[1] + e_err) / (self.R_EARTH * scale)
+            new_reading.longitude = self.home_lon + (d_lon_rad * self.RAD_TO_DEG)
 
-        # 2. Longitude Calculation / 经度计算
-        d_lon_rad = state.pos[1] / (self.R_EARTH * scale)
-        self.reading.longitude = self.home_lon + (d_lon_rad * self.RAD_TO_DEG)
+            # Altitude
+            new_reading.altitude = -state.pos[2] + alt_err
 
-        # 3. Altitude / 高度
-        self.reading.altitude = -state.pos[2]
+            # Ground Speed & Course
+            R_b_n = MathUtils.quat_to_rotation_matrix(state.q)
+            vel_ned = R_b_n @ state.vel
+            vn, ve = vel_ned[0], vel_ned[1]
+            new_reading.ground_speed = np.sqrt(vn**2 + ve**2)
+            new_reading.ground_course = np.degrees(np.arctan2(ve, vn)) % 360.0
+            
+            self.delay_buffer.append((self.current_time, new_reading))
 
-        # 4. Ground Speed Calculation / 地速计算
-        R_b_n = MathUtils.quat_to_rotation_matrix(state.q)
-        vel_ned = R_b_n @ state.vel
-        vn, ve = vel_ned[0], vel_ned[1]
-
-        self.reading.ground_speed = np.sqrt(vn**2 + ve**2)
-        self.reading.ground_course = np.degrees(np.arctan2(ve, vn)) % 360.0
+        # 2. Output & Delay logic
+        if self.enable_noise and self.delay > 0:
+            # Advance the buffer until the next element is NOT older than the delay
+            while len(self.delay_buffer) > 1 and (self.current_time - self.delay_buffer[1][0]) >= self.delay:
+                self.delay_buffer.popleft()
+                
+            # If the oldest element is older than delay, output it
+            if len(self.delay_buffer) > 0 and (self.current_time - self.delay_buffer[0][0]) >= self.delay:
+                self.reading = copy.deepcopy(self.delay_buffer[0][1])
+            elif self.reading.latitude == 0.0 and len(self.delay_buffer) > 0:
+                # Initialization fallback
+                self.reading = copy.deepcopy(self.delay_buffer[0][1])
+        else:
+            # Real-time output
+            if len(self.delay_buffer) > 0:
+                self.reading = copy.deepcopy(self.delay_buffer[-1][1])
+                self.delay_buffer.clear()
 
     def get_reading(self):
         return self.reading
